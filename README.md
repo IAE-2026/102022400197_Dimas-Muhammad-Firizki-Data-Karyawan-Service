@@ -1,4 +1,6 @@
-# Data Karyawan Service
+# 102022400197_Dimas-Muhammad-Firizki-Data-Karyawan-Service
+
+## Data Karyawan Service
 
 Laravel service for the IAE Assignment 2 `Penggajian Karyawan` project. This repository owns employee master data and exposes it through REST and GraphQL APIs.
 
