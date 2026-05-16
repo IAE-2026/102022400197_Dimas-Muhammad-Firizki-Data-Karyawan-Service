@@ -1,0 +1,19 @@
+type Employee {
+  id: ID!
+  employee_id: String!
+  nik: String!
+  name: String!
+  email: String!
+  position: String!
+  department: String!
+  base_salary: Float!
+  fixed_allowance: Float!
+  status: String!
+  created_at: String
+  updated_at: String
+}
+
+type Query {
+  employees: [Employee!]! @all(model: "App\\Models\\Employee")
+  employee(id: ID! @eq): Employee @find(model: "App\\Models\\Employee")
+}

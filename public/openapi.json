@@ -1,0 +1,120 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Data Karyawan Service API",
+    "version": "1.0.0",
+    "description": "REST API for Employee Master Data in the Penggajian Karyawan integration project."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8001"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "IaeApiKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-IAE-KEY"
+      }
+    },
+    "schemas": {
+      "EmployeeInput": {
+        "type": "object",
+        "required": ["employee_id", "nik", "name", "email", "position", "department", "base_salary", "fixed_allowance", "status"],
+        "properties": {
+          "employee_id": { "type": "string", "example": "EMP-001" },
+          "nik": { "type": "string", "example": "3276010101010001" },
+          "name": { "type": "string", "example": "Dimas Pratama" },
+          "email": { "type": "string", "format": "email", "example": "dimas@example.com" },
+          "position": { "type": "string", "example": "Staff HR" },
+          "department": { "type": "string", "example": "Human Resource" },
+          "base_salary": { "type": "number", "example": 5500000 },
+          "fixed_allowance": { "type": "number", "example": 750000 },
+          "status": { "type": "string", "enum": ["active", "inactive", "resigned"], "example": "active" }
+        }
+      },
+      "SuccessResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "example": "success" },
+          "message": { "type": "string", "example": "Operation successful" },
+          "data": {},
+          "meta": {
+            "type": "object",
+            "properties": {
+              "service_name": { "type": "string", "example": "Data-Karyawan-Service" },
+              "api_version": { "type": "string", "example": "v1" }
+            }
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "example": "error" },
+          "message": { "type": "string", "example": "Detail pesan kesalahan..." },
+          "errors": { "nullable": true }
+        }
+      }
+    }
+  },
+  "security": [{ "IaeApiKey": [] }],
+  "paths": {
+    "/api/v1/employees": {
+      "get": {
+        "summary": "List employees",
+        "responses": {
+          "200": { "description": "Employees retrieved", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SuccessResponse" } } } },
+          "401": { "description": "Invalid API key", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      },
+      "post": {
+        "summary": "Create employee",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EmployeeInput" } } }
+        },
+        "responses": {
+          "201": { "description": "Employee created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SuccessResponse" } } } },
+          "401": { "description": "Invalid API key", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "422": { "description": "Validation error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/employees/{id}": {
+      "get": {
+        "summary": "Get employee detail",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": {
+          "200": { "description": "Employee retrieved", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SuccessResponse" } } } },
+          "401": { "description": "Invalid API key", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "404": { "description": "Employee not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      },
+      "put": {
+        "summary": "Update employee",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EmployeeInput" } } }
+        },
+        "responses": {
+          "200": { "description": "Employee updated", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SuccessResponse" } } } },
+          "401": { "description": "Invalid API key" },
+          "404": { "description": "Employee not found" },
+          "422": { "description": "Validation error" }
+        }
+      },
+      "delete": {
+        "summary": "Delete employee",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": {
+          "200": { "description": "Employee deleted", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SuccessResponse" } } } },
+          "401": { "description": "Invalid API key" },
+          "404": { "description": "Employee not found" }
+        }
+      }
+    }
+  }
+}
