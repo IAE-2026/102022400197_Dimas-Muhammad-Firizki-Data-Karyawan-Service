@@ -5,15 +5,12 @@ Client akan mengirimkan request POST data karyawan ke endpoint /api/v1/employees
 # Alasan kenapa endpoint POST /api/v1/employees dimasukan ke SOAP :
 
 Karena dalam proses bisnis pengelolaan data karyawan, pembuatan data karyawan baru merupakan transaksi penting yang harus memiliki jejak audit yang valid dan dapat dipertanggungjawabkan. Dengan mengirimkan log transaksi ke layanan SOAP Audit milik dosen, setiap aktivitas pembuatan data karyawan akan tercatat secara terpusat.
-
 Saat proses audit berhasil dilakukan, service saya akan menerima receipt_number dari layanan SOAP sebagai bukti bahwa transaksi telah tercatat secara resmi pada sistem audit pusat. Receipt number tersebut kemudian disimpan pada tabel "audit_logs".
 
 # Alasan kenapa endpoint POST /api/v1/employees disiarkan ke RabbitMQ :
 
 Karena pada konsep Enterprise Application Integration, perubahan data pada suatu service sebaiknya dapat diketahui oleh service lain secara real-time tanpa harus melakukan polling atau request berulang ke API sumber.
-
 Ketika data karyawan berhasil dibuat, service saya akan mengirimkan pesan (publish message) ke RabbitMQ Broker pusat menggunakan event seperti employee.created . Pesan tersebut berisi informasi penting terkait data karyawan yang baru dibuat.
-
 Dengan mekanisme publish-subscribe ini, service lain yang membutuhkan informasi data karyawan baru dapat langsung menerima notifikasi secara real-time. Pendekatan ini meningkatkan loose coupling antar service, mengurangi ketergantungan langsung antar aplikasi, serta mendukung arsitektur event-driven yang umum digunakan pada sistem enterprise.
 
 # Alasan penggunaan Federated SSO :
