@@ -16,6 +16,12 @@
         "type": "apiKey",
         "in": "header",
         "name": "X-IAE-KEY"
+      },
+      "SsoBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "JWT user dari endpoint login SSO IAE"
       }
     },
     "schemas": {
@@ -61,6 +67,31 @@
   },
   "security": [{ "IaeApiKey": [] }],
   "paths": {
+    "/api/v1/auth/login": {
+      "post": {
+        "summary": "Login melalui SSO pusat dan petakan role lokal",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["email", "password"],
+                "properties": {
+                  "email": { "type": "string", "format": "email", "example": "warga01@ktp.iae.id" },
+                  "password": { "type": "string", "format": "password", "example": "KtpDigital2026!" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Login berhasil dan JWT dikembalikan" },
+          "401": { "description": "Kredensial SSO tidak valid" },
+          "422": { "description": "Validasi request gagal" }
+        }
+      }
+    },
     "/api/v1/employees": {
       "get": {
         "summary": "List employees",
@@ -70,15 +101,18 @@
         }
       },
       "post": {
-        "summary": "Create employee",
+        "summary": "Create employee, audit via SOAP, then publish RabbitMQ event",
+        "security": [{ "IaeApiKey": [], "SsoBearer": [] }],
         "requestBody": {
           "required": true,
           "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EmployeeInput" } } }
         },
         "responses": {
-          "201": { "description": "Employee created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SuccessResponse" } } } },
+          "201": { "description": "Employee created with SOAP receipt and published event", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SuccessResponse" } } } },
           "401": { "description": "Invalid API key", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
-          "422": { "description": "Validation error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+          "403": { "description": "Local role is not hr_admin" },
+          "422": { "description": "Validation error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "502": { "description": "Central SOAP or RabbitMQ integration failed; transaction rolled back" }
         }
       }
     },
@@ -93,7 +127,8 @@
         }
       },
       "put": {
-        "summary": "Update employee",
+        "summary": "Update employee and run central integrations",
+        "security": [{ "IaeApiKey": [], "SsoBearer": [] }],
         "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
         "requestBody": {
           "required": true,
@@ -107,7 +142,8 @@
         }
       },
       "delete": {
-        "summary": "Delete employee",
+        "summary": "Delete employee and run central integrations",
+        "security": [{ "IaeApiKey": [], "SsoBearer": [] }],
         "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
         "responses": {
           "200": { "description": "Employee deleted", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SuccessResponse" } } } },

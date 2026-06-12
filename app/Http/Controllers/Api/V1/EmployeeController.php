@@ -2,14 +2,27 @@
 
 namespace App\Http\Controllers\Api\V1;
 
-use App\Models\Employee;
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
+use App\Models\AuditLog;
+use App\Models\Employee;
+use App\Services\RabbitMqPublisher;
+use App\Services\SoapAuditService;
+use App\Services\SsoService;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Throwable;
 
 class EmployeeController extends Controller
 {
+    public function __construct(
+        private readonly SsoService $sso,
+        private readonly SoapAuditService $soapAudit,
+        private readonly RabbitMqPublisher $publisher,
+    ) {}
+
     /**
      * Display a listing of the resource.
      */
@@ -24,9 +37,22 @@ class EmployeeController extends Controller
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate($this->rules());
-        $employee = Employee::create($validated);
 
-        return $this->success($employee, 'Employee created successfully', 201);
+        try {
+            [$employee, $receipt] = DB::transaction(function () use ($request, $validated): array {
+                $employee = Employee::create($validated);
+                $receipt = $this->integrateCriticalTransaction($request, 'EmployeeCreated', 'employee.created', $employee->toArray());
+
+                return [$employee, $receipt];
+            });
+        } catch (Throwable $exception) {
+            return $this->integrationError($exception);
+        }
+
+        return $this->success([
+            'employee' => $employee,
+            'integration' => ['audit_receipt_number' => $receipt, 'event' => 'employee.created'],
+        ], 'Employee created and integrated successfully', 201);
     }
 
     /**
@@ -61,9 +87,23 @@ class EmployeeController extends Controller
         }
 
         $validated = $request->validate($this->rules($employee->id));
-        $employee->update($validated);
 
-        return $this->success($employee->fresh(), 'Employee updated successfully');
+        try {
+            [$updated, $receipt] = DB::transaction(function () use ($request, $employee, $validated): array {
+                $employee->update($validated);
+                $updated = $employee->fresh();
+                $receipt = $this->integrateCriticalTransaction($request, 'EmployeeUpdated', 'employee.updated', $updated->toArray());
+
+                return [$updated, $receipt];
+            });
+        } catch (Throwable $exception) {
+            return $this->integrationError($exception);
+        }
+
+        return $this->success([
+            'employee' => $updated,
+            'integration' => ['audit_receipt_number' => $receipt, 'event' => 'employee.updated'],
+        ], 'Employee updated and integrated successfully');
     }
 
     /**
@@ -80,9 +120,21 @@ class EmployeeController extends Controller
             return $this->error('Data karyawan tidak ditemukan.', 404);
         }
 
-        $employee->delete();
+        try {
+            $receipt = DB::transaction(function () use ($request, $employee): string {
+                $snapshot = $employee->toArray();
+                $employee->delete();
 
-        return $this->success(null, 'Employee deleted successfully');
+                return $this->integrateCriticalTransaction($request, 'EmployeeDeleted', 'employee.deleted', $snapshot);
+            });
+        } catch (Throwable $exception) {
+            return $this->integrationError($exception);
+        }
+
+        return $this->success([
+            'employee_id' => $employee->employee_id,
+            'integration' => ['audit_receipt_number' => $receipt, 'event' => 'employee.deleted'],
+        ], 'Employee deleted and integrated successfully');
     }
 
     private function rules(?int $employeeId = null): array
@@ -120,5 +172,56 @@ class EmployeeController extends Controller
             'message' => $message,
             'errors' => null,
         ], $status);
+    }
+
+    private function integrateCriticalTransaction(
+        Request $request,
+        string $activityName,
+        string $eventName,
+        array $employee
+    ): string {
+        $actor = $request->attributes->get('federated_user');
+        $payload = [
+            'service' => config('iae.service_name'),
+            'event' => $eventName,
+            'occurred_at' => now()->toIso8601String(),
+            'actor' => [
+                'subject' => $actor->sso_subject,
+                'email' => $actor->email,
+                'local_role' => $actor->role->name,
+            ],
+            'employee' => $employee,
+        ];
+
+        $machineToken = $this->sso->machineToken();
+        $receipt = $this->soapAudit->submit($machineToken, $activityName, $payload);
+
+        AuditLog::create([
+            'employee_id' => $employee['employee_id'],
+            'activity_name' => $activityName,
+            'event_name' => $eventName,
+            'sso_subject' => $actor->sso_subject,
+            'receipt_number' => $receipt,
+            'status' => 'completed',
+            'payload' => $payload,
+        ]);
+
+        $this->publisher->publish($machineToken, $eventName, [
+            ...$payload,
+            'audit_receipt_number' => $receipt,
+        ]);
+
+        return $receipt;
+    }
+
+    private function integrationError(Throwable $exception): JsonResponse
+    {
+        report($exception);
+
+        $message = $exception instanceof RequestException
+            ? 'Layanan pusat menolak atau gagal memproses transaksi.'
+            : $exception->getMessage();
+
+        return $this->error('Transaksi dibatalkan: '.$message, 502);
     }
 }

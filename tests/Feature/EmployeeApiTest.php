@@ -2,7 +2,15 @@
 
 namespace Tests\Feature;
 
+use App\Models\Employee;
+use App\Models\FederatedUser;
+use App\Models\Role;
+use App\Services\RabbitMqPublisher;
+use App\Services\SoapAuditService;
+use App\Services\SsoService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Mockery\MockInterface;
+use RuntimeException;
 use Tests\TestCase;
 
 class EmployeeApiTest extends TestCase
@@ -13,13 +21,22 @@ class EmployeeApiTest extends TestCase
 
     public function test_can_create_and_list_employees(): void
     {
-        $create = $this->withHeader('X-IAE-KEY', self::API_KEY)
+        $this->fakeSuccessfulIntegrations();
+
+        $create = $this->criticalRequest()
             ->postJson('/api/v1/employees', $this->payload());
 
         $create->assertCreated()
             ->assertJsonPath('status', 'success')
-            ->assertJsonPath('data.employee_id', 'EMP-001')
+            ->assertJsonPath('data.employee.employee_id', 'EMP-001')
+            ->assertJsonPath('data.integration.audit_receipt_number', 'IAE-LOG-2026-TEST')
             ->assertJsonPath('meta.service_name', 'Data-Karyawan-Service');
+
+        $this->assertDatabaseHas('audit_logs', [
+            'employee_id' => 'EMP-001',
+            'receipt_number' => 'IAE-LOG-2026-TEST',
+            'event_name' => 'employee.created',
+        ]);
 
         $list = $this->withHeader('X-IAE-KEY', self::API_KEY)
             ->getJson('/api/v1/employees');
@@ -31,8 +48,7 @@ class EmployeeApiTest extends TestCase
 
     public function test_can_get_employee_detail(): void
     {
-        $this->withHeader('X-IAE-KEY', self::API_KEY)
-            ->postJson('/api/v1/employees', $this->payload());
+        Employee::create($this->payload());
 
         $response = $this->withHeader('X-IAE-KEY', self::API_KEY)
             ->getJson('/api/v1/employees/EMP-001');
@@ -61,7 +77,9 @@ class EmployeeApiTest extends TestCase
 
     public function test_validation_error_returns_422(): void
     {
-        $response = $this->withHeader('X-IAE-KEY', self::API_KEY)
+        $this->fakeSuccessfulIntegrations();
+
+        $response = $this->criticalRequest()
             ->postJson('/api/v1/employees', []);
 
         $response->assertUnprocessable()
@@ -79,8 +97,7 @@ class EmployeeApiTest extends TestCase
 
     public function test_graphql_query_returns_selected_fields(): void
     {
-        $this->withHeader('X-IAE-KEY', self::API_KEY)
-            ->postJson('/api/v1/employees', $this->payload());
+        Employee::create($this->payload());
 
         $response = $this->withHeader('X-IAE-KEY', self::API_KEY)
             ->postJson('/graphql', [
@@ -108,6 +125,46 @@ class EmployeeApiTest extends TestCase
             ->assertJsonPath('status', 'error');
     }
 
+    public function test_critical_transaction_requires_sso_bearer_token(): void
+    {
+        $response = $this->withHeader('X-IAE-KEY', self::API_KEY)
+            ->postJson('/api/v1/employees', $this->payload());
+
+        $response->assertUnauthorized()
+            ->assertJsonPath('message', 'Bearer token SSO wajib dikirim.');
+    }
+
+    public function test_publisher_failure_rolls_back_employee_and_audit_log(): void
+    {
+        $this->fakeFederatedIdentity();
+        $this->mock(SoapAuditService::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('submit')->once()->andReturn('IAE-LOG-2026-ROLLBACK');
+        });
+        $this->mock(RabbitMqPublisher::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('publish')->once()->andThrow(new RuntimeException('Publisher unavailable'));
+        });
+
+        $response = $this->criticalRequest()
+            ->postJson('/api/v1/employees', $this->payload());
+
+        $response->assertStatus(502)
+            ->assertJsonPath('status', 'error');
+
+        $this->assertDatabaseCount('employees', 0);
+        $this->assertDatabaseCount('audit_logs', 0);
+    }
+
+    public function test_local_role_is_enforced(): void
+    {
+        $this->fakeFederatedIdentity('viewer');
+
+        $response = $this->criticalRequest()
+            ->postJson('/api/v1/employees', $this->payload());
+
+        $response->assertForbidden()
+            ->assertJsonPath('message', 'Role lokal tidak diizinkan melakukan transaksi ini.');
+    }
+
     private function payload(): array
     {
         return [
@@ -121,5 +178,48 @@ class EmployeeApiTest extends TestCase
             'fixed_allowance' => 750000,
             'status' => 'active',
         ];
+    }
+
+    private function criticalRequest(): static
+    {
+        return $this->withHeaders([
+            'X-IAE-KEY' => self::API_KEY,
+            'Authorization' => 'Bearer test-user-jwt',
+        ]);
+    }
+
+    private function fakeSuccessfulIntegrations(): void
+    {
+        $this->fakeFederatedIdentity();
+
+        $this->mock(SoapAuditService::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('submit')->andReturn('IAE-LOG-2026-TEST');
+        });
+
+        $this->mock(RabbitMqPublisher::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('publish')->andReturn(['status' => 'success']);
+        });
+    }
+
+    private function fakeFederatedIdentity(string $roleName = 'hr_admin'): void
+    {
+        $role = Role::create(['name' => $roleName]);
+        $user = FederatedUser::create([
+            'role_id' => $role->id,
+            'sso_subject' => 'warga01@ktp.iae.id',
+            'name' => 'Ahmad Rizki Pratama',
+            'email' => 'warga01@ktp.iae.id',
+            'nim' => '2026000001',
+        ])->setRelation('role', $role);
+
+        $this->mock(SsoService::class, function (MockInterface $mock) use ($user): void {
+            $mock->shouldReceive('verifyUserToken')->andReturn([
+                'iss' => 'iae-central-mock',
+                'sub' => $user->sso_subject,
+                'token_type' => 'user',
+            ]);
+            $mock->shouldReceive('mapLocalUser')->andReturn($user);
+            $mock->shouldReceive('machineToken')->andReturn('test-m2m-token');
+        });
     }
 }

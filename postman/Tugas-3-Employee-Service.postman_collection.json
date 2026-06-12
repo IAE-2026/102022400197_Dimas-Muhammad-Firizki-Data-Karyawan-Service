@@ -1,0 +1,104 @@
+{
+  "info": {
+    "_postman_id": "05e556a7-0e9c-4c22-bcaf-employee-service-tugas3",
+    "name": "Tugas 3 - Data Karyawan Service",
+    "description": "Jalankan berurutan. Login menyimpan JWT otomatis ke collection variable.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8001" },
+    { "key": "iae_api_key", "value": "102022400197" },
+    { "key": "sso_email", "value": "warga34@ktp.iae.id" },
+    { "key": "sso_password", "value": "KtpDigital2026!" },
+    { "key": "sso_token", "value": "" },
+    { "key": "employee_id", "value": "EMP-TUGAS3-001" }
+  ],
+  "auth": {
+    "type": "apikey",
+    "apikey": [
+      { "key": "key", "value": "X-IAE-KEY", "type": "string" },
+      { "key": "value", "value": "{{iae_api_key}}", "type": "string" },
+      { "key": "in", "value": "header", "type": "string" }
+    ]
+  },
+  "item": [
+    {
+      "name": "1. Login SSO",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{sso_email}}\",\n  \"password\": \"{{sso_password}}\"\n}"
+        },
+        "url": "{{base_url}}/api/v1/auth/login"
+      },
+      "event": [{
+        "listen": "test",
+        "script": {
+          "exec": [
+            "pm.test('Login SSO berhasil', () => pm.response.to.have.status(200));",
+            "const json = pm.response.json();",
+            "pm.collectionVariables.set('sso_token', json.data.token);",
+            "pm.expect(json.data.profile.local_role).to.eql('hr_admin');"
+          ]
+        }
+      }]
+    },
+    {
+      "name": "2. Create Employee - SOAP + RabbitMQ",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{sso_token}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"employee_id\": \"{{employee_id}}\",\n  \"nik\": \"3276010101010099\",\n  \"name\": \"Karyawan Tugas 3\",\n  \"email\": \"tugas3.employee@example.com\",\n  \"position\": \"Staff HR\",\n  \"department\": \"Human Resource\",\n  \"base_salary\": 5500000,\n  \"fixed_allowance\": 750000,\n  \"status\": \"active\"\n}"
+        },
+        "url": "{{base_url}}/api/v1/employees"
+      },
+      "event": [{
+        "listen": "test",
+        "script": {
+          "exec": [
+            "pm.test('Created dan terintegrasi', () => pm.response.to.have.status(201));",
+            "pm.expect(pm.response.json().data.integration.audit_receipt_number).to.be.a('string');"
+          ]
+        }
+      }]
+    },
+    {
+      "name": "3. Get Employee",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{base_url}}/api/v1/employees/{{employee_id}}"
+      }
+    },
+    {
+      "name": "4. Update Employee - SOAP + RabbitMQ",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{sso_token}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"employee_id\": \"{{employee_id}}\",\n  \"nik\": \"3276010101010099\",\n  \"name\": \"Karyawan Tugas 3 Updated\",\n  \"email\": \"tugas3.employee@example.com\",\n  \"position\": \"Senior Staff HR\",\n  \"department\": \"Human Resource\",\n  \"base_salary\": 6000000,\n  \"fixed_allowance\": 900000,\n  \"status\": \"active\"\n}"
+        },
+        "url": "{{base_url}}/api/v1/employees/{{employee_id}}"
+      }
+    },
+    {
+      "name": "5. Delete Employee - SOAP + RabbitMQ",
+      "request": {
+        "method": "DELETE",
+        "header": [{ "key": "Authorization", "value": "Bearer {{sso_token}}" }],
+        "url": "{{base_url}}/api/v1/employees/{{employee_id}}"
+      }
+    }
+  ]
+}
