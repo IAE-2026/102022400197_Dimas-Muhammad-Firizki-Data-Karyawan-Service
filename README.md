@@ -31,17 +31,19 @@ Endpoints:
 - `PUT /api/v1/employees/{id}`
 - `DELETE /api/v1/employees/{id}`
 
-`POST`, `PUT`, and `DELETE` are critical transactions and additionally require:
+For Tugas 2 compatibility, `POST /api/v1/employees` can create an employee with only `X-IAE-KEY`.
+
+For the Tugas 3 critical transaction flow, send a Bearer token when creating, updating, or deleting employees:
 
 ```http
 Authorization: Bearer <JWT_FROM_LOGIN>
 ```
 
-Only the local role `hr_admin` may change employee data. A successful change returns a SOAP `audit_receipt_number` and publishes an `employee.created`, `employee.updated`, or `employee.deleted` event. If either central integration fails, the local database transaction is rolled back and the API returns `502`.
+When a Bearer token is supplied, only the local role `hr_admin` may run the critical flow. A successful critical change returns a SOAP `audit_receipt_number` and publishes an `employee.created`, `employee.updated`, or `employee.deleted` event. If either central integration fails, the local database transaction is rolled back and the API returns `502`. `PUT` and `DELETE` always require the Bearer token and role check.
 
 ## Central Integration Configuration
 
-Copy `.env.example` to `.env`, then fill the M2M key supplied by the lecturer:
+For Docker, the service boots from `.env.example` automatically. To run the full Tugas 3 central integration flow, fill the M2M key supplied by the lecturer in the environment used by Docker:
 
 ```env
 IAE_M2M_API_KEY=KEY-MHS-XX
@@ -76,8 +78,7 @@ query {
 ## Docker
 
 ```bash
-cp .env.example .env
-docker compose up --build
+docker compose up --build -d
 ```
 
 The API runs at:

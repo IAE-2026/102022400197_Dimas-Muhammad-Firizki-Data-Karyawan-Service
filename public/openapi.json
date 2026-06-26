@@ -24,6 +24,15 @@
         "description": "JWT user dari endpoint login SSO IAE"
       }
     },
+    "parameters": {
+      "IaeApiKeyHeader": {
+        "name": "X-IAE-KEY",
+        "in": "header",
+        "required": true,
+        "schema": { "type": "string" },
+        "description": "API key service yang dibaca dari konfigurasi IAE_API_KEY."
+      }
+    },
     "schemas": {
       "EmployeeInput": {
         "type": "object",
@@ -95,31 +104,37 @@
     "/api/v1/employees": {
       "get": {
         "summary": "List employees",
+        "parameters": [{ "$ref": "#/components/parameters/IaeApiKeyHeader" }],
         "responses": {
           "200": { "description": "Employees retrieved", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SuccessResponse" } } } },
           "401": { "description": "Invalid API key", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
         }
       },
       "post": {
-        "summary": "Create employee, audit via SOAP, then publish RabbitMQ event",
-        "security": [{ "IaeApiKey": [], "SsoBearer": [] }],
+        "summary": "Create employee",
+        "description": "Kompatibilitas Tugas 2 berhasil hanya dengan X-IAE-KEY. Jika Bearer SSO dikirim, request diproses sebagai transaksi kritis Task 3 dengan SOAP audit dan RabbitMQ publisher.",
+        "security": [{ "IaeApiKey": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/IaeApiKeyHeader" }],
         "requestBody": {
           "required": true,
           "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EmployeeInput" } } }
         },
         "responses": {
-          "201": { "description": "Employee created with SOAP receipt and published event", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SuccessResponse" } } } },
+          "201": { "description": "Employee created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SuccessResponse" } } } },
           "401": { "description": "Invalid API key", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
-          "403": { "description": "Local role is not hr_admin" },
+          "403": { "description": "Bearer SSO valid, tetapi role lokal bukan hr_admin" },
           "422": { "description": "Validation error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
-          "502": { "description": "Central SOAP or RabbitMQ integration failed; transaction rolled back" }
+          "502": { "description": "Integrasi Task 3 gagal saat Bearer SSO dikirim; transaksi dibatalkan" }
         }
       }
     },
     "/api/v1/employees/{id}": {
       "get": {
         "summary": "Get employee detail",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "parameters": [
+          { "$ref": "#/components/parameters/IaeApiKeyHeader" },
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
         "responses": {
           "200": { "description": "Employee retrieved", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SuccessResponse" } } } },
           "401": { "description": "Invalid API key", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
@@ -149,6 +164,72 @@
           "200": { "description": "Employee deleted", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SuccessResponse" } } } },
           "401": { "description": "Invalid API key" },
           "404": { "description": "Employee not found" }
+        }
+      }
+    },
+    "/api/v1/karyawan": {
+      "get": {
+        "summary": "List karyawan",
+        "parameters": [{ "$ref": "#/components/parameters/IaeApiKeyHeader" }],
+        "responses": {
+          "200": { "description": "Karyawan retrieved", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SuccessResponse" } } } },
+          "401": { "description": "Invalid API key", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      },
+      "post": {
+        "summary": "Create karyawan",
+        "description": "Alias kompatibilitas untuk employee. X-IAE-KEY wajib; Bearer SSO bersifat opsional untuk jalur kritis Task 3.",
+        "security": [{ "IaeApiKey": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/IaeApiKeyHeader" }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EmployeeInput" } } }
+        },
+        "responses": {
+          "201": { "description": "Karyawan created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SuccessResponse" } } } },
+          "401": { "description": "Invalid API key", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "403": { "description": "Bearer SSO valid, tetapi role lokal bukan hr_admin" },
+          "422": { "description": "Validation error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "502": { "description": "Integrasi Task 3 gagal saat Bearer SSO dikirim; transaksi dibatalkan" }
+        }
+      }
+    },
+    "/api/v1/karyawan/{id}": {
+      "get": {
+        "summary": "Get karyawan detail",
+        "parameters": [
+          { "$ref": "#/components/parameters/IaeApiKeyHeader" },
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Karyawan retrieved", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SuccessResponse" } } } },
+          "401": { "description": "Invalid API key", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "404": { "description": "Karyawan not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      },
+      "put": {
+        "summary": "Update karyawan and run central integrations",
+        "security": [{ "IaeApiKey": [], "SsoBearer": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EmployeeInput" } } }
+        },
+        "responses": {
+          "200": { "description": "Karyawan updated", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SuccessResponse" } } } },
+          "401": { "description": "Invalid API key" },
+          "404": { "description": "Karyawan not found" },
+          "422": { "description": "Validation error" }
+        }
+      },
+      "delete": {
+        "summary": "Delete karyawan and run central integrations",
+        "security": [{ "IaeApiKey": [], "SsoBearer": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": {
+          "200": { "description": "Karyawan deleted", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SuccessResponse" } } } },
+          "401": { "description": "Invalid API key" },
+          "404": { "description": "Karyawan not found" }
         }
       }
     }

@@ -3,11 +3,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: employee-service
     ports:
       - "8001:8000"
     env_file:
-      - .env
+      - .env.example
     depends_on:
       employee-db:
         condition: service_healthy
@@ -16,7 +15,6 @@ services:
 
   employee-db:
     image: mysql:8.4
-    container_name: employee-db
     environment:
       MYSQL_DATABASE: employee_service
       MYSQL_USER: employee_user
@@ -36,7 +34,6 @@ services:
 
 networks:
   payroll-network:
-    name: payroll-network
 
 volumes:
   employee-db-data:

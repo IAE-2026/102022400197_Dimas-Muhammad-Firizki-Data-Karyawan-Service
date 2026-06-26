@@ -12,7 +12,7 @@
     <script>
         window.onload = () => {
             window.ui = SwaggerUIBundle({
-                url: '/openapi.json',
+                url: @json(url('/openapi.json')),
                 dom_id: '#swagger-ui',
                 presets: [SwaggerUIBundle.presets.apis],
                 layout: 'BaseLayout'

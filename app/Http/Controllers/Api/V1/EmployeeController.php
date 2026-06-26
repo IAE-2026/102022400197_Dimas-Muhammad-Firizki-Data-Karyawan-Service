@@ -38,6 +38,33 @@ class EmployeeController extends Controller
     {
         $validated = $request->validate($this->rules());
 
+        if (! $request->bearerToken()) {
+            if ($request->headers->has('Authorization')) {
+                return $this->error('Bearer token SSO tidak valid atau kedaluwarsa.', 401);
+            }
+
+            $employee = Employee::create($validated);
+
+            return $this->success([
+                'employee' => $employee,
+                'integration' => null,
+            ], 'Employee created successfully', 201);
+        }
+
+        try {
+            $claims = $this->sso->verifyUserToken((string) $request->bearerToken());
+            $actor = $this->sso->mapLocalUser($claims);
+        } catch (Throwable) {
+            return $this->error('Bearer token SSO tidak valid atau kedaluwarsa.', 401);
+        }
+
+        if ($actor->role?->name !== 'hr_admin') {
+            return $this->error('Role lokal tidak diizinkan melakukan transaksi ini.', 403);
+        }
+
+        $request->attributes->set('sso_claims', $claims);
+        $request->attributes->set('federated_user', $actor);
+
         try {
             [$employee, $receipt] = DB::transaction(function () use ($request, $validated): array {
                 $employee = Employee::create($validated);
@@ -109,7 +136,7 @@ class EmployeeController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(string $id): JsonResponse
+    public function destroy(Request $request, string $id): JsonResponse
     {
         $employee = Employee::query()
             ->where('id', $id)

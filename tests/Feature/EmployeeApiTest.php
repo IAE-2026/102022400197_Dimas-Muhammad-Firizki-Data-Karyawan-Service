@@ -46,6 +46,66 @@ class EmployeeApiTest extends TestCase
             ->assertJsonPath('data.0.name', 'Dimas Pratama');
     }
 
+    public function test_can_create_and_list_karyawan(): void
+    {
+        $this->fakeSuccessfulIntegrations();
+
+        $create = $this->criticalRequest()
+            ->postJson('/api/v1/karyawan', $this->payload());
+
+        $create->assertCreated()
+            ->assertJsonPath('status', 'success')
+            ->assertJsonPath('data.employee.employee_id', 'EMP-001')
+            ->assertJsonPath('data.integration.audit_receipt_number', 'IAE-LOG-2026-TEST')
+            ->assertJsonPath('meta.service_name', 'Data-Karyawan-Service');
+
+        $list = $this->withHeader('X-IAE-KEY', self::API_KEY)
+            ->getJson('/api/v1/karyawan');
+
+        $list->assertOk()
+            ->assertJsonPath('status', 'success')
+            ->assertJsonPath('data.0.name', 'Dimas Pratama');
+    }
+
+    public function test_karyawan_detail_and_actions(): void
+    {
+        $this->fakeSuccessfulIntegrations();
+
+        Employee::create($this->payload());
+
+        // Get Detail
+        $detail = $this->withHeader('X-IAE-KEY', self::API_KEY)
+            ->getJson('/api/v1/karyawan/EMP-001');
+        $detail->assertOk()
+            ->assertJsonPath('data.name', 'Dimas Pratama');
+
+        // Update
+        $updatedPayload = $this->payload();
+        $updatedPayload['name'] = 'Dimas Updated';
+        $update = $this->criticalRequest()
+            ->putJson('/api/v1/karyawan/EMP-001', $updatedPayload);
+        $update->assertOk()
+            ->assertJsonPath('status', 'success')
+            ->assertJsonPath('data.employee.name', 'Dimas Updated');
+
+        // Delete
+        $delete = $this->criticalRequest()
+            ->deleteJson('/api/v1/karyawan/EMP-001');
+        $delete->assertOk()
+            ->assertJsonPath('status', 'success');
+    }
+
+    public function test_global_exception_wrapper_for_route_not_found(): void
+    {
+        $response = $this->withHeader('X-IAE-KEY', self::API_KEY)
+            ->getJson('/api/v1/non_existent_route_path');
+
+        $response->assertNotFound()
+            ->assertJsonPath('status', 'error')
+            ->assertJsonPath('message', 'Resource tidak ditemukan.')
+            ->assertJsonPath('errors', null);
+    }
+
     public function test_can_get_employee_detail(): void
     {
         Employee::create($this->payload());
@@ -125,13 +185,22 @@ class EmployeeApiTest extends TestCase
             ->assertJsonPath('status', 'error');
     }
 
-    public function test_critical_transaction_requires_sso_bearer_token(): void
+    public function test_task_2_create_employee_only_requires_api_key(): void
     {
         $response = $this->withHeader('X-IAE-KEY', self::API_KEY)
             ->postJson('/api/v1/employees', $this->payload());
 
-        $response->assertUnauthorized()
-            ->assertJsonPath('message', 'Bearer token SSO wajib dikirim.');
+        $response->assertCreated()
+            ->assertJsonPath('status', 'success')
+            ->assertJsonPath('data.employee.employee_id', 'EMP-001')
+            ->assertJsonPath('data.integration', null)
+            ->assertJsonPath('meta.service_name', 'Data-Karyawan-Service');
+
+        $this->assertDatabaseHas('employees', [
+            'employee_id' => 'EMP-001',
+            'email' => 'dimas@example.com',
+        ]);
+        $this->assertDatabaseCount('audit_logs', 0);
     }
 
     public function test_publisher_failure_rolls_back_employee_and_audit_log(): void
